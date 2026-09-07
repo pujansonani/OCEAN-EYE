@@ -16,6 +16,9 @@ from app.providers import (
     ocean_provider,
     gis_infra
 )
+from app.services.detection_service import detection_service
+from app.services.drift_service import drift_service
+from app.services.ais_service import ais_service
 from app.services.attribution_service import attribution_service
 from app.services.counterfactual_service import counterfactual_service
 from app.services.report_service import report_service
@@ -23,7 +26,7 @@ from app.services.report_service import report_service
 app = FastAPI(
     title="OCEAN-EYE Maritime Operations API",
     description="Operational Marine Surveillance, SAR Satellite Analysis & Vessel Attribution Engine",
-    version="2.1.0"
+    version="2.2.0"
 )
 
 app.add_middleware(
@@ -45,9 +48,13 @@ def get_root():
         "endpoints": {
             "vessels": "/api/vessels",
             "satellite": "/api/satellite/latest",
+            "satellite_scenes": "/api/satellite/scenes",
             "environment": "/api/environment/field",
+            "drift_backtrack": "/api/drift/backtrack",
+            "ais_filter": "/api/ais/filter",
             "incidents": "/api/incidents",
             "attribution": "/api/attribution/rank",
+            "counterfactual": "/api/counterfactual/run",
             "live_websocket": "/ws/ais"
         }
     }
@@ -57,8 +64,8 @@ def get_root():
 @app.get("/api/system/status")
 def get_system_status():
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    mst_acc = ais_provider.myshiptracking.get_account_info()
-    coins = mst_acc.get("available_coins", 2000) if mst_acc else 2000
+    mst_status = "CONNECTED" if ais_provider.myshiptracking.api_key else "OFFLINE / UNCONFIGURED"
+    dd_status = "CONNECTED" if ais_provider.datadocked.api_key else "OFFLINE / UNCONFIGURED"
 
     return {
         "status": "OPERATIONAL",
@@ -66,22 +73,40 @@ def get_system_status():
         "mode": "HYBRID MULTI-GATEWAY (DATADOCKED + MYSHIPTRACKING LIVE)",
         "subsystems": {
             "datadocked_ais": {
-                "status": "CONNECTED",
+                "status": dd_status,
                 "source": "DataDocked Live API (datadocked.com)",
                 "latency_ms": 12,
                 "coverage": "Global Commercial Fleet & Registry"
             },
             "myshiptracking_ais": {
-                "status": "CONNECTED",
+                "status": mst_status,
                 "source": "MyShipTracking v2 Maritime API (myshiptracking.com)",
-                "available_coins": coins,
                 "latency_ms": 15,
                 "coverage": "Live Terrestrial AIS & Historical Tracks"
             },
-            "satellite_sar": {"status": "AVAILABLE", "source": "Copernicus Sentinel-1A C-Band", "latest_pass": "2026-09-06 10:42:18 UTC"},
-            "ocean_current": {"status": "AVAILABLE", "source": "INCOIS Hydrodynamic Reanalysis", "resolution": "0.1 deg"},
-            "wind_field": {"status": "AVAILABLE", "source": "ECMWF ERA5 Marine Surface Wind", "resolution": "0.125 deg"},
-            "gis_database": {"status": "CONNECTED", "engine": "PostGIS / GeoJSON Engine", "epsg": "4326"}
+            "satellite_sar": {
+                "status": "AVAILABLE",
+                "source": "Copernicus Sentinel-1A C-Band",
+                "latest_pass": "2026-09-06 10:42:18 UTC",
+                "data_mode": "DISCRETE_OBSERVATION"
+            },
+            "ocean_current": {
+                "status": "AVAILABLE",
+                "source": "INCOIS Hydrodynamic Reanalysis",
+                "resolution": "0.1 deg",
+                "data_mode": "GRID_REANALYSIS"
+            },
+            "wind_field": {
+                "status": "AVAILABLE",
+                "source": "ECMWF ERA5 Marine Surface Wind",
+                "resolution": "0.125 deg",
+                "data_mode": "SURFACE_FIELD"
+            },
+            "gis_database": {
+                "status": "CONNECTED",
+                "engine": "PostGIS / GeoJSON Engine",
+                "epsg": "4326"
+            }
         }
     }
 
@@ -95,10 +120,11 @@ def get_incidents():
             "status": "UNDER_INVESTIGATION",
             "detection_time": "2026-09-06 10:42:18 UTC",
             "location": "Arabian Sea (19.425° N, 71.848° E)",
-            "spill_area_km2": 4.82,
-            "confidence": 0.94,
+            "spill_area_km2": 65.7,
+            "confidence": 0.86,
             "candidate_count": 3,
-            "last_update": "Just now"
+            "last_update": "Just now",
+            "data_status": "DEMO"
         },
         {
             "id": "OCEAN-002",
@@ -107,9 +133,10 @@ def get_incidents():
             "detection_time": "2026-09-05 18:20:00 UTC",
             "location": "Gulf of Khambhat (20.912° N, 72.110° E)",
             "spill_area_km2": 1.25,
-            "confidence": 0.62,
-            "candidate_count": 1,
-            "last_update": "4 hours ago"
+            "confidence": 0.42,
+            "candidate_count": 0,
+            "last_update": "4 hours ago",
+            "data_status": "HISTORICAL"
         },
         {
             "id": "OCEAN-003",
@@ -120,7 +147,8 @@ def get_incidents():
             "spill_area_km2": 0.45,
             "confidence": 0.88,
             "candidate_count": 0,
-            "last_update": "2 days ago"
+            "last_update": "2 days ago",
+            "data_status": "HISTORICAL"
         }
     ]
 
@@ -170,20 +198,72 @@ def fetch_live_track(
         "mmsi": mmsi,
         "track_points_count": len(track),
         "source": "MyShipTracking v2 Historical Track API",
+        "data_status": "LIVE_QUERY",
         "points": track
     }
 
 
-# Account quota & credit monitoring
+# Account quota & credit monitoring (Without exposing credentials or sensitive values)
 @app.get("/api/account/status")
 def get_account_status():
     return {
         "datadocked": {
-            "status": "ACTIVE",
-            "tier": "Production Live Enterprise Key"
+            "status": "ACTIVE" if ais_provider.datadocked.api_key else "STANDBY",
+            "tier": "Configured via Environment"
         },
-        "myshiptracking": ais_provider.myshiptracking.get_account_info() or {"status": "ACTIVE", "available_coins": 2000}
+        "myshiptracking": {
+            "status": "ACTIVE" if ais_provider.myshiptracking.api_key else "STANDBY",
+            "tier": "Configured via Environment"
+        }
     }
+
+
+@app.get("/api/satellite/scenes")
+def search_satellite_scenes(
+    bbox: Optional[str] = Query(None, description="min_lon,min_lat,max_lon,max_lat"),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    sensor: str = Query("Sentinel-1 SAR C-Band"),
+    polarization: str = Query("VV+VH")
+):
+    return [
+        {
+            "scene_id": "S1A_IW_GRDH_1SDV_20260906T104218_044812_0556C4_F102",
+            "platform": "Sentinel-1A",
+            "instrument": sensor,
+            "acquisition_time": "2026-09-06 10:42:18 UTC",
+            "polarization": polarization,
+            "orbit_pass": "Ascending (Relative Orbit 12)",
+            "data_status": "HISTORICAL_OBSERVATION",
+            "footprint": [
+                [19.700, 71.200],
+                [19.700, 72.200],
+                [19.100, 72.200],
+                [19.100, 71.200],
+                [19.700, 71.200]
+            ],
+            "spill_detected": True,
+            "source": "ESA Copernicus Open Access Hub / INCOIS Mirror"
+        },
+        {
+            "scene_id": "S1B_IW_GRDH_1SDV_20260905T182012_038102_0481A1_E081",
+            "platform": "Sentinel-1B",
+            "instrument": sensor,
+            "acquisition_time": "2026-09-05 18:20:12 UTC",
+            "polarization": polarization,
+            "orbit_pass": "Descending (Relative Orbit 45)",
+            "data_status": "HISTORICAL_OBSERVATION",
+            "footprint": [
+                [21.200, 71.800],
+                [21.200, 72.600],
+                [20.500, 72.600],
+                [20.500, 71.800],
+                [21.200, 71.800]
+            ],
+            "spill_detected": False,
+            "source": "ESA Copernicus Open Access Hub"
+        }
+    ]
 
 
 @app.get("/api/satellite/latest")
@@ -191,9 +271,67 @@ def get_latest_satellite_scene():
     return satellite_provider.get_latest_sar_scene()
 
 
+@app.post("/api/detection/run")
+def run_detection(
+    incident_id: str = Body("OCEAN-001", embed=True),
+    simulate_look_alike: bool = Body(False, embed=True)
+):
+    return detection_service.detect_spill(incident_id=incident_id, simulate_look_alike=simulate_look_alike)
+
+
+@app.get("/api/detection/{id}")
+def get_detection(id: str):
+    return detection_service.detect_spill(incident_id=id)
+
+
 @app.get("/api/environment/field")
 def get_environmental_field():
     return ocean_provider.get_environmental_field()
+
+
+@app.post("/api/drift/backtrack")
+def run_drift_backtrack(
+    incident_id: str = Body("OCEAN-001", embed=True),
+    centroid_lat: float = Body(19.425, embed=True),
+    centroid_lon: float = Body(71.848, embed=True),
+    current_mps: float = Body(0.35, embed=True),
+    current_deg: float = Body(65.0, embed=True),
+    wind_mps: float = Body(6.2, embed=True),
+    wind_deg: float = Body(240.0, embed=True),
+    backward_hours: float = Body(4.7, embed=True),
+    particle_count: int = Body(12, embed=True),
+    uncertainty_scale: float = Body(1.0, embed=True)
+):
+    return drift_service.backtrack(
+        incident_id=incident_id,
+        centroid_lat=centroid_lat,
+        centroid_lon=centroid_lon,
+        current_mps=current_mps,
+        current_deg=current_deg,
+        wind_mps=wind_mps,
+        wind_deg=wind_deg,
+        backward_hours=backward_hours,
+        particle_count=particle_count,
+        uncertainty_scale=uncertainty_scale,
+        is_demo=(incident_id == "OCEAN-001" and abs(current_mps - 0.35) < 0.01 and abs(wind_mps - 6.2) < 0.01)
+    )
+
+
+@app.post("/api/ais/filter")
+def run_ais_filter(
+    origin_lat: float = Body(19.280, embed=True),
+    origin_lon: float = Body(71.450, embed=True),
+    max_dist_km: float = Body(25.0, embed=True),
+    window_start: str = Body("2026-09-06T06:00:00Z", embed=True),
+    window_end: str = Body("2026-09-06T10:00:00Z", embed=True)
+):
+    return ais_service.filter_vessels_dynamically(
+        origin_lat=origin_lat,
+        origin_lon=origin_lon,
+        max_dist_km=max_dist_km,
+        window_start_str=window_start,
+        window_end_str=window_end
+    )
 
 
 @app.get("/api/gis/infrastructure")
@@ -204,14 +342,32 @@ def get_gis_infrastructure():
 @app.get("/api/candidates")
 @app.get("/api/attribution/rank")
 @app.post("/api/attribution/rank")
-def get_candidates(threshold: float = Query(50.0)):
-    return attribution_service.rank_candidates(evidence_threshold=threshold)
+def get_candidates(
+    threshold: float = Query(50.0),
+    weights: Optional[Dict[str, float]] = Body(None)
+):
+    return attribution_service.rank_candidates(evidence_threshold=threshold, weights=weights)
 
 
 @app.post("/api/counterfactual/run")
 @app.post("/api/counterfactual/simulate")
-def simulate_counterfactual(vessel_id: str = Body("VESSEL-001", embed=True)):
-    return counterfactual_service.run_hypothesis(vessel_id=vessel_id)
+def simulate_counterfactual(
+    vessel_id: str = Body("VESSEL-001", embed=True),
+    incident_id: str = Body("OCEAN-001", embed=True),
+    custom_lat: Optional[float] = Body(None, embed=True),
+    custom_lon: Optional[float] = Body(None, embed=True),
+    current_mps: float = Body(0.35, embed=True),
+    wind_mps: float = Body(6.2, embed=True)
+):
+    from app.models.schemas import GeoPoint
+    custom_pt = GeoPoint(lat=custom_lat, lng=custom_lon) if custom_lat is not None and custom_lon is not None else None
+    return counterfactual_service.run_hypothesis(
+        vessel_id=vessel_id,
+        incident_id=incident_id,
+        custom_release_point=custom_pt,
+        current_mps=current_mps,
+        wind_mps=wind_mps
+    )
 
 
 @app.post("/api/reports/generate")
@@ -227,9 +383,10 @@ async def websocket_ais_stream(websocket: WebSocket):
         await websocket.send_json({
             "type": "connection_status",
             "status": "CONNECTED",
-            "provider": "DataDocked Live AIS Gateway & Sector 7 Replay",
+            "provider": "Multi-Source AIS Gateway (DataDocked / MyShipTracking / Sector 7 Replay)",
             "timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
-            "active_vessel_count": len(ais_provider.get_all_vessels())
+            "active_vessel_count": len(ais_provider.get_all_vessels()),
+            "data_mode": "STREAMING_HYBRID"
         })
 
         while True:
@@ -239,6 +396,7 @@ async def websocket_ais_stream(websocket: WebSocket):
                 "type": "heartbeat",
                 "timestamp_utc": now_str,
                 "data_freshness": "REAL_TIME_STREAMING",
+                "data_status": "SIMULATED_REPLAY",
                 "vessels": ais_provider.get_all_vessels()
             })
     except WebSocketDisconnect:

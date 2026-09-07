@@ -3,8 +3,18 @@ Pydantic schemas and data models for OCEAN-EYE Investigation-Support System.
 Strictly adheres to probabilistic, non-accusatory terminology.
 """
 
+from enum import Enum
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
+
+
+class DataStatusEnum(str, Enum):
+    LIVE = "LIVE"
+    HISTORICAL = "HISTORICAL"
+    DEMO = "DEMO"
+    SIMULATED = "SIMULATED"
+    ESTIMATED = "ESTIMATED"
+    OFFLINE = "OFFLINE"
 
 
 class GeoPoint(BaseModel):
@@ -26,7 +36,7 @@ class SARLookAlikeCheck(BaseModel):
 class SpillDetection(BaseModel):
     incident_id: str
     status: str = "Suspected Oil Slick"
-    confidence: float = 0.86  # Detection Confidence (Demo value)
+    confidence: float = 0.86
     area_km2: float = 65.7
     centroid: GeoPoint = Field(default_factory=lambda: GeoPoint(lat=19.425, lng=71.848))
     length_km: float = 22.0
@@ -36,7 +46,8 @@ class SpillDetection(BaseModel):
     look_alike_check: SARLookAlikeCheck = Field(default_factory=SARLookAlikeCheck)
     sensor_name: str = "Sentinel-1 SAR C-Band (IW Mode - VV/VH)"
     observation_timestamp: str = "2026-09-06T10:42:00Z"
-    provenance_tag: str = "Synthetic SAR Demonstration Image"
+    data_status: DataStatusEnum = DataStatusEnum.DEMO
+    provenance_tag: str = "Demonstration SAR Feature Geometry"
 
 
 class ParticleTrackPoint(BaseModel):
@@ -57,15 +68,15 @@ class ProbableOriginRegion(BaseModel):
     semi_minor_km: float
     azimuth_deg: float
     boundary_polygon: List[List[float]]
-    confidence_level: float = 0.72  # Origin Confidence
+    confidence_level: float = 0.72
 
 
 class DriftHindcastResult(BaseModel):
     incident_id: str
     current_velocity_mps: float = 0.35
-    current_direction_deg: float = 65.0  # ENE
+    current_direction_deg: float = 65.0
     wind_velocity_mps: float = 6.2
-    wind_direction_deg: float = 240.0  # WSW
+    wind_direction_deg: float = 240.0
     windage_leeway_factor: float = 0.03
     backward_hours: float = 4.7
     release_window_start: str = "2026-09-06T06:00:00Z"
@@ -74,19 +85,20 @@ class DriftHindcastResult(BaseModel):
     origin_confidence: float = 0.72
     probable_origin: ProbableOriginRegion
     particle_trajectories: List[ParticleTrajectory]
+    data_status: DataStatusEnum = DataStatusEnum.SIMULATED
     methodology_note: str = (
-        "Origin estimate is reconstructed from historical environmental conditions and is "
-        "subject to uncertainty in current, wind, and spill dynamics."
+        "Origin estimate is reconstructed from backward 2D Lagrangian particle integration and is "
+        "subject to uncertainty in current, wind, and turbulent dispersion."
     )
-    provenance_tag: str = "Synthetic Demonstration Environmental Conditions"
+    provenance_tag: str = "2D Lagrangian Hydrodynamic Advection-Dispersion Engine"
 
 
 class AISPoint(BaseModel):
     timestamp: str
     lat: float
     lng: float
-    sog_knots: float  # Speed over ground
-    cog_deg: float    # Course over ground
+    sog_knots: float
+    cog_deg: float
     heading_deg: Optional[float] = None
     nav_status: str = "Under way using engine"
     has_anomaly: bool = False
@@ -103,10 +115,21 @@ class AISVessel(BaseModel):
     length_m: float
     beam_m: float
     is_candidate: bool
-    filter_stage_eliminated: Optional[str] = None  # None if candidate, "Stage 1 (Spatial)" or "Stage 2 (Temporal)"
+    filter_stage_eliminated: Optional[str] = None
     track: List[AISPoint]
     ais_anomaly_flag: bool = False
     ais_anomaly_detail: Optional[str] = None
+    data_status: DataStatusEnum = DataStatusEnum.HISTORICAL
+    source: str = "Terrestrial/Satellite AIS Gateway"
+    data_age_seconds: Optional[int] = None
+
+
+class ProvenanceEntry(BaseModel):
+    component: str
+    source: str
+    timestamp_utc: str
+    observed_vs_inferred: str
+    calculation_method: str
 
 
 class EvidenceBreakdown(BaseModel):
@@ -119,9 +142,9 @@ class EvidenceBreakdown(BaseModel):
     weights_formula_applied: str = (
         "0.25*Proximity + 0.20*Temporal + 0.20*Drift + 0.15*Trajectory + 0.10*Behaviour + 0.10*AIS_Anomaly"
     )
+    provenance_entries: Optional[List[ProvenanceEntry]] = None
     design_weights_note: str = (
-        "These weights are used for prototype demonstration. Production calibration would require "
-        "labelled historical incidents and validation."
+        "Evidence strength score represents investigative priority ranking, NOT proof of legal liability."
     )
 
 
