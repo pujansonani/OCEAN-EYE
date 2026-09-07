@@ -226,44 +226,8 @@ def search_satellite_scenes(
     sensor: str = Query("Sentinel-1 SAR C-Band"),
     polarization: str = Query("VV+VH")
 ):
-    return [
-        {
-            "scene_id": "S1A_IW_GRDH_1SDV_20260906T104218_044812_0556C4_F102",
-            "platform": "Sentinel-1A",
-            "instrument": sensor,
-            "acquisition_time": "2026-09-06 10:42:18 UTC",
-            "polarization": polarization,
-            "orbit_pass": "Ascending (Relative Orbit 12)",
-            "data_status": "HISTORICAL_OBSERVATION",
-            "footprint": [
-                [19.700, 71.200],
-                [19.700, 72.200],
-                [19.100, 72.200],
-                [19.100, 71.200],
-                [19.700, 71.200]
-            ],
-            "spill_detected": True,
-            "source": "ESA Copernicus Open Access Hub / INCOIS Mirror"
-        },
-        {
-            "scene_id": "S1B_IW_GRDH_1SDV_20260905T182012_038102_0481A1_E081",
-            "platform": "Sentinel-1B",
-            "instrument": sensor,
-            "acquisition_time": "2026-09-05 18:20:12 UTC",
-            "polarization": polarization,
-            "orbit_pass": "Descending (Relative Orbit 45)",
-            "data_status": "HISTORICAL_OBSERVATION",
-            "footprint": [
-                [21.200, 71.800],
-                [21.200, 72.600],
-                [20.500, 72.600],
-                [20.500, 71.800],
-                [21.200, 71.800]
-            ],
-            "spill_detected": False,
-            "source": "ESA Copernicus Open Access Hub"
-        }
-    ]
+    bbox_list = [float(x.strip()) for x in bbox.split(",")] if bbox else None
+    return satellite_provider.search_scenes(bbox=bbox_list, start_date=start_date, end_date=end_date)
 
 
 @app.get("/api/satellite/latest")
@@ -344,9 +308,22 @@ def get_gis_infrastructure():
 @app.post("/api/attribution/rank")
 def get_candidates(
     threshold: float = Query(50.0),
+    origin_lat: float = Query(19.280),
+    origin_lon: float = Query(71.450),
+    window_start: str = Query("2026-09-06T06:00:00Z"),
+    window_end: str = Query("2026-09-06T10:00:00Z"),
+    drift_deg: float = Query(62.0),
     weights: Optional[Dict[str, float]] = Body(None)
 ):
-    return attribution_service.rank_candidates(evidence_threshold=threshold, weights=weights)
+    return attribution_service.rank_candidates(
+        evidence_threshold=threshold,
+        weights=weights,
+        origin_lat=origin_lat,
+        origin_lon=origin_lon,
+        window_start_str=window_start,
+        window_end_str=window_end,
+        drift_direction_deg=drift_deg
+    )
 
 
 @app.post("/api/counterfactual/run")

@@ -171,12 +171,59 @@ def test_live_providers_resilience():
     print("✓ Multi-Provider Fallback & Normalized Live Telemetry passed.")
 
 
+def test_dynamic_attribution_ranking_changes_with_inputs():
+    # 1. Benchmark input ranking -> Vessel A is #1
+    ranked_standard = attribution_service.rank_candidates(
+        origin_lat=19.280,
+        origin_lon=71.450,
+        window_start_str="2026-09-06T06:00:00Z",
+        window_end_str="2026-09-06T10:00:00Z"
+    )
+    assert ranked_standard[0].vessel_name == "Vessel A (MT Ocean Vanguard)"
+    assert ranked_standard[0].rank == 1
+
+    # 2. Shift origin to northern corridor [19.380, 71.390] -> Vessel B (MV Bharat Star) ranking shifts up
+    from app.data.demo_incident import SYNTHETIC_FLEET_DATA
+    ranked_shifted = attribution_service.rank_candidates(
+        dynamic_vessels=SYNTHETIC_FLEET_DATA,
+        origin_lat=19.380,
+        origin_lon=71.390,
+        window_start_str="2026-09-06T06:00:00Z",
+        window_end_str="2026-09-06T08:00:00Z"
+    )
+    assert ranked_shifted[0].vessel_name == "Vessel B (MV Bharat Star)"
+    assert ranked_shifted[0].evidence_breakdown.proximity_score > 90.0
+    print("✓ Dynamic Attribution Candidate Ranking Shift with Input Changes passed.")
+
+
+def test_environmental_and_satellite_providers():
+    # 1. Satellite Scene Search
+    from app.providers import satellite_provider, ocean_provider
+    scenes = satellite_provider.search_scenes()
+    assert len(scenes) >= 2
+    assert scenes[0]["scene_id"].startswith("S1A_")
+    assert scenes[0]["data_status"] in ["HISTORICAL", "SIMULATED", "LIVE"]
+    assert "acquisition_time" in scenes[0]
+
+    # 2. Environmental Field
+    env = ocean_provider.get_environmental_field()
+    assert "current_velocity_mps" in env
+    assert "wind_velocity_mps" in env
+    assert "current_vectors" in env
+    assert len(env["current_vectors"]) > 10
+    assert env["data_status"] in ["LIVE", "HISTORICAL", "SIMULATED", "DEMO"]
+    print("✓ Environmental Metocean & Satellite Scene Discovery Providers passed.")
+
+
 if __name__ == "__main__":
     test_detection_service()
     test_drift_service_numerical_integration()
     test_ais_spatiotemporal_filtering()
     test_attribution_scoring_and_weights()
+    test_dynamic_attribution_ranking_changes_with_inputs()
     test_counterfactual_service_metrics()
     test_report_generation()
+    test_environmental_and_satellite_providers()
     test_live_providers_resilience()
-    print("\nALL 7 CORE VERIFICATION TESTS COMPLETED SUCCESSFULLY!")
+    print("\nALL 9 CORE VERIFICATION TESTS COMPLETED SUCCESSFULLY!")
+
