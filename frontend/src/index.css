@@ -1,0 +1,171 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#030712] text-slate-100 font-sans min-h-screen overflow-hidden antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01", "ss02";
+  }
+
+  h1, h2, h3, h4, .heading-display {
+    font-family: 'Syne', 'Plus Jakarta Sans', sans-serif;
+    letter-spacing: -0.02em;
+  }
+}
+
+/* Custom High-Tech Tactical Scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(3, 7, 18, 0.95);
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #0ea5e9;
+}
+
+/* Leaflet Professional Nautical Chart Styling */
+.leaflet-container {
+  background-color: #030712 !important;
+  font-family: 'Geist', 'Inter', system-ui, sans-serif;
+  outline: none;
+  z-index: 1;
+}
+
+/* Clear any corruptive tile filters so all basemap features render crisply */
+.leaflet-tile {
+  filter: brightness(0.95) contrast(1.05);
+}
+
+.leaflet-popup-content-wrapper {
+  background: rgba(6, 11, 22, 0.96) !important;
+  color: #f8fafc !important;
+  border: 1px solid rgba(56, 189, 248, 0.4) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.9) !important;
+  backdrop-filter: blur(16px) !important;
+  padding: 0 !important;
+}
+
+.leaflet-popup-content {
+  margin: 10px 14px !important;
+  line-height: 1.4 !important;
+  font-size: 11px !important;
+}
+
+.leaflet-popup-tip {
+  background: rgba(6, 11, 22, 0.96) !important;
+  border: 1px solid rgba(56, 189, 248, 0.4) !important;
+}
+
+.leaflet-popup-close-button {
+  color: #94a3b8 !important;
+  padding: 6px !important;
+}
+
+.leaflet-popup-close-button:hover {
+  color: #38bdf8 !important;
+}
+
+/* High-Tech Interactive Cursor */
+.soufflet-cursor-dot {
+  pointer-events: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 8px;
+  height: 8px;
+  background-color: #38bdf8;
+  border-radius: 50%;
+  z-index: 99999;
+  transform: translate(-50%, -50%);
+  transition: transform 0.05s ease-out, opacity 0.2s ease;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
+}
+
+.soufflet-cursor-ring {
+  pointer-events: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 32px;
+  height: 32px;
+  border: 1.5px solid rgba(56, 189, 248, 0.6);
+  border-radius: 50%;
+  z-index: 99998;
+  transform: translate(-50%, -50%);
+  transition: width 0.2s ease, height 0.2s ease, border-color 0.2s ease, transform 0.12s ease-out;
+}
+
+.soufflet-cursor-ring.hovered {
+  width: 48px;
+  height: 48px;
+  border-color: #38bdf8;
+  background-color: rgba(56, 189, 248, 0.1);
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.3);
+}
+
+/* Text Mask Animations */
+@keyframes slideUp {
+  0% {
+    transform: translateY(110%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slideUp {
+  animation: slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slideUpDelay {
+  animation: slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards;
+  opacity: 0;
+}
+
+/* Tactical Vessel Pulse Animation */
+@keyframes tactical-pulse {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.3;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+.candidate-pulse-ring {
+  animation: tactical-pulse 2s cubic-bezier(0.2, 0, 0.4, 1) infinite;
+}
+
+/* Drift Streamline Dash Animation */
+@keyframes dash-flow {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+
+.drift-streamline-animated {
+  animation: dash-flow 1.5s linear infinite;
+}
+
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+}
