@@ -1,0 +1,22 @@
+name: Keep OCEAN-EYE Backend Active 24/7
+
+on:
+  schedule:
+    # Run every 10 minutes (cron syntax: minute hour day month day-of-week)
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+jobs:
+  ping-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render Backend Health Endpoint
+        run: |
+          echo "Pinging OCEAN-EYE backend to prevent idle spin-down..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://ocean-eye-ccia.onrender.com/api/health)
+          echo "Render Backend Response Code: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" -eq 200 ] || [ "$HTTP_STATUS" -eq 301 ] || [ "$HTTP_STATUS" -eq 302 ]; then
+            echo "Backend is ACTIVE and OPERATIONAL."
+          else
+            echo "Backend returned HTTP $HTTP_STATUS - Still pinged successfully."
+          fi
