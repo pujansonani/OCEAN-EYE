@@ -29,13 +29,23 @@ app = FastAPI(
     version="2.2.0"
 )
 
+import os
+
+# CORS origin configuration (configurable via ALLOWED_ORIGINS env var, e.g. "https://app.vercel.app,http://localhost:5173")
+ALLOWED_ORIGINS_ENV = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000,https://ocean-eye-ccia.onrender.com,https://ocean-eye.vercel.app"
+)
+allowed_origins_list = [origin.strip() for origin in ALLOWED_ORIGINS_ENV.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=allowed_origins_list if "*" not in allowed_origins_list else ["*"],
+    allow_credentials=True if "*" not in allowed_origins_list else False,
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
 
 
 @app.get("/")
@@ -64,37 +74,37 @@ def get_root():
 @app.get("/api/system/status")
 def get_system_status():
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    mst_status = "CONNECTED" if ais_provider.myshiptracking.api_key else "OFFLINE / UNCONFIGURED"
-    dd_status = "CONNECTED" if ais_provider.datadocked.api_key else "OFFLINE / UNCONFIGURED"
+    mst_status = "CONNECTED" if ais_provider.myshiptracking.api_key else "OFFLINE"
+    dd_status = "CONNECTED" if ais_provider.datadocked.api_key else "OFFLINE"
 
     return {
         "status": "OPERATIONAL",
         "current_utc": now_utc,
-        "mode": "HYBRID MULTI-GATEWAY (DATADOCKED + MYSHIPTRACKING LIVE)",
+        "mode": "HYBRID (LIVE PROVIDERS + SECTOR 7 BENCHMARK REPLAY)",
         "subsystems": {
             "datadocked_ais": {
                 "status": dd_status,
                 "source": "DataDocked Live API (datadocked.com)",
-                "latency_ms": 12,
-                "coverage": "Global Commercial Fleet & Registry"
+                "data_mode": "LIVE_LOOKUP" if dd_status == "CONNECTED" else "UNCONFIGURED",
+                "coverage": "Commercial Fleet & Registry"
             },
             "myshiptracking_ais": {
                 "status": mst_status,
                 "source": "MyShipTracking v2 Maritime API (myshiptracking.com)",
-                "latency_ms": 15,
-                "coverage": "Live Terrestrial AIS & Historical Tracks"
+                "data_mode": "LIVE_TELEMETRY" if mst_status == "CONNECTED" else "UNCONFIGURED",
+                "coverage": "Terrestrial AIS & Historical Tracks"
             },
             "satellite_sar": {
                 "status": "AVAILABLE",
-                "source": "Copernicus Sentinel-1A C-Band",
+                "source": "ESA Copernicus Sentinel-1A C-Band Archive",
                 "latest_pass": "2026-09-06 10:42:18 UTC",
-                "data_mode": "DISCRETE_OBSERVATION"
+                "data_mode": "HISTORICAL_OBSERVATION"
             },
             "ocean_current": {
                 "status": "AVAILABLE",
-                "source": "INCOIS Hydrodynamic Reanalysis",
+                "source": "INCOIS Hydrodynamic Reanalysis / Open-Meteo Marine",
                 "resolution": "0.1 deg",
-                "data_mode": "GRID_REANALYSIS"
+                "data_mode": "SIMULATED_REANALYSIS"
             },
             "wind_field": {
                 "status": "AVAILABLE",
@@ -104,8 +114,8 @@ def get_system_status():
             },
             "gis_database": {
                 "status": "CONNECTED",
-                "engine": "PostGIS / GeoJSON Engine",
-                "epsg": "4326"
+                "engine": "GeoJSON Spatial Engine (EPSG:4326)",
+                "data_mode": "INTEGRATED"
             }
         }
     }
